@@ -6,6 +6,7 @@ Run these tests @ Devstack:
 from datetime import datetime
 import uuid
 
+
 from django.core.urlresolvers import reverse
 from django.test.utils import override_settings
 from xmodule.modulestore.tests.django_utils import TEST_DATA_MOCK_MODULESTORE, ModuleStoreTestCase
@@ -14,8 +15,7 @@ from xmodule.modulestore.tests.factories import CourseFactory, ItemFactory
 
 TEST_SERVER_HOST = 'http://testserver'
 TEST_API_KEY = str(uuid.uuid4())
-USER_COUNT = 6
-SAMPLE_GRADE_DATA_COUNT = 4
+
 
 HEADERS = {
     'HTTP_X_EDX_API_KEY': TEST_API_KEY,
@@ -103,23 +103,7 @@ class CourseViewTestsMixin(TestCourseDataMixin):
         uri = self.build_absolute_url(reverse('course_api_v0:detail', kwargs={'course_id': unicode(course_key)}))
         self.assertEqual(data['uri'], uri)
 
-    def serialize_content(self, content, include_children=False):
-        serialized = {
-            'id': unicode(content.location),
-            'category': content.category,
-            'name': content.display_name,
-            'uri': self.build_absolute_url(reverse('course_api_v0:content:detail',
-                                                   kwargs={'course_id': self.COURSE_ID,
-                                                           'content_id': content.location}))}
 
-        if include_children:
-            serialized['children'] = []
-
-        return serialized
-
-    def assertValidResponseContent(self, data, content):
-        child = self.serialize_content(content)
-        self.assertDictContainsSubset(child, data)
 
     def http_get(self, uri):
         """Submit an HTTP GET request"""
@@ -195,93 +179,30 @@ class CourseListTests(CourseViewTestsMixin, ModuleStoreTestCase):
         self.assertEqual(len(courses), 1)
         self.assertValidResponseCourse(courses[0], self.COURSE)
 
+    def test_unauthorized(self):
+        """
+        Verify that access is denied to un-authenticated users.
+        """
+
+        # If debug mode is enabled, the view should return data even if the user is not authenticated.
+        with override_settings(DEBUG=True):
+            response = self.http_get(reverse(self.view), HTTP_AUTHORIZATION=None)
+            self.assertEqual(response.status_code, 200)
+
+        response = self.http_get(reverse(self.view), HTTP_AUTHORIZATION=None)
+        self.assertEqual(response.status_code, 401)
+
 
 @override_settings(MODULESTORE=TEST_DATA_MOCK_MODULESTORE)
-@override_settings(EDX_API_KEY=TEST_API_KEY)
 class CourseDetailTests(CourseDetailMixin, CourseViewTestsMixin, ModuleStoreTestCase):
     view = 'course_api_v0:detail'
 
     def test_get(self):
         response = super(CourseDetailTests, self).test_get()
         self.assertValidResponseCourse(response.data, self.COURSE)
-        self.assertListEqual(response.data['children'], [])
-
-    def test_get_with_depth(self):
-        """
-        The endpoint should return child content when the depth querystring parameter is specified.
-        """
-        url = "{}?depth=3".format(reverse(self.view, kwargs={'course_id': self.COURSE_ID}))
-        response = self.http_get(url)
-        self.assertEqual(response.status_code, 200)
-
-        children = response.data['children']
-        self.assertEqual(len(children), 1)
-        self.assertValidResponseContent(children[0], self.GRADED_CONTENT)
 
 
 @override_settings(MODULESTORE=TEST_DATA_MOCK_MODULESTORE)
-@override_settings(EDX_API_KEY=TEST_API_KEY)
-class CourseContentListTests(CourseDetailMixin, CourseViewTestsMixin, ModuleStoreTestCase):
-    view = 'course_api_v0:content:list'
-
-    def test_get(self):
-        response = super(CourseContentListTests, self).test_get()
-        self.assertEqual(len(response.data), 1)
-        self.assertValidResponseContent(response.data[0], self.GRADED_CONTENT)
-
-    def test_get_with_depth(self):
-        """
-        The endpoint should return child content when the depth querystring parameter is specified.
-        """
-        url = "{}?depth=3".format(reverse(self.view, kwargs={'course_id': self.COURSE_ID}))
-        response = self.http_get(url)
-        self.assertEqual(response.status_code, 200)
-
-        child = response.data[0]
-        self.assertValidResponseContent(child, self.GRADED_CONTENT)
-        self.assertValidResponseContent(child['children'][0], self.PROBLEM)
-
-
-@override_settings(MODULESTORE=TEST_DATA_MOCK_MODULESTORE)
-@override_settings(EDX_API_KEY=TEST_API_KEY)
-class CourseContentDetailTests(CourseDetailMixin, CourseViewTestsMixin, ModuleStoreTestCase):
-    view = 'course_api_v0:content:detail'
-
-    def test_get_invalid_course(self):
-        """
-        The view should return a 404 if the course ID or content ID is invalid.
-        """
-        url = reverse(self.view, kwargs={'course_id': self.INVALID_COURSE_ID,
-                                         'content_id': unicode(self.GRADED_CONTENT.location)})
-        response = self.http_get(url)
-        self.assertEqual(response.status_code, 404)
-
-        url = reverse(self.view, kwargs={'course_id': self.INVALID_COURSE_ID, 'content_id': 'i4x://foo/bar'})
-        response = self.http_get(url)
-        self.assertEqual(response.status_code, 404)
-
-    def test_get(self):
-        """
-        The view should return a 200 if the course ID is invalid.
-        """
-        url = reverse(self.view,
-                      kwargs={'course_id': self.COURSE_ID, 'content_id': unicode(self.GRADED_CONTENT.location)})
-        response = self.http_get(url)
-        self.assertEqual(response.status_code, 200)
-        self.assertValidResponseContent(response.data, self.GRADED_CONTENT)
-
-    def test_get_with_depth(self):
-        url = reverse(self.view,
-                      kwargs={'course_id': self.COURSE_ID, 'content_id': unicode(self.GRADED_CONTENT.location)})
-        url = "{}?depth=3".format(url)
-        response = self.http_get(url)
-        self.assertEqual(response.status_code, 200)
-        self.assertValidResponseContent(response.data, self.GRADED_CONTENT)
-        self.assertValidResponseContent(response.data['children'][0], self.PROBLEM)
-
-
-@override_settings(MODULESTORE=TEST_DATA_MOCK_MODULESTORE)
-@override_settings(EDX_API_KEY=TEST_API_KEY)
 class CourseStructureTests(CourseDetailMixin, CourseViewTestsMixin, ModuleStoreTestCase):
     view = 'course_api_v0:structure'
 
@@ -323,14 +244,6 @@ class CourseStructureTests(CourseDetailMixin, CourseViewTestsMixin, ModuleStoreT
             }
         }
         self.assertDictEqual(response.data, expected)
-
-    def test_get_invalid_course(self):
-        """
-        The view should return a 404 if the course ID is invalid.
-        """
-        url = reverse(self.view, kwargs={'course_id': self.INVALID_COURSE_ID})
-        response = self.http_get(url)
-        self.assertEqual(response.status_code, 404)
 
 
 @override_settings(MODULESTORE=TEST_DATA_MOCK_MODULESTORE)
