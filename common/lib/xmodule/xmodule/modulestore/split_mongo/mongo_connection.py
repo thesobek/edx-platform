@@ -10,7 +10,8 @@ from pymongo.errors import DuplicateKeyError  # pylint: disable=unused-import
 
 from contracts import check, new_contract
 from xmodule.exceptions import HeartbeatFailure
-from xmodule.modulestore.split_mongo import BlockKey, BlockData
+from xmodule.modulestore import BlockData
+from xmodule.modulestore.split_mongo import BlockKey
 import datetime
 import pytz
 

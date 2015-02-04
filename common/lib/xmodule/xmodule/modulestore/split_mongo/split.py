@@ -73,13 +73,14 @@ from opaque_keys.edx.locator import (
 from xmodule.modulestore.exceptions import InsufficientSpecificationError, VersionConflictError, DuplicateItemError, \
     DuplicateCourseError
 from xmodule.modulestore import (
-    inheritance, ModuleStoreWriteBase, ModuleStoreEnum, BulkOpsRecord, BulkOperationsMixin, SortedAssetList
+    inheritance, ModuleStoreWriteBase, ModuleStoreEnum,
+    BulkOpsRecord, BulkOperationsMixin, SortedAssetList, BlockData
 )
 
 from ..exceptions import ItemNotFoundError
 from .caching_descriptor_system import CachingDescriptorSystem
 from xmodule.modulestore.split_mongo.mongo_connection import MongoConnection, DuplicateKeyError
-from xmodule.modulestore.split_mongo import BlockKey, CourseEnvelope, BlockData
+from xmodule.modulestore.split_mongo import BlockKey, CourseEnvelope
 from xmodule.error_module import ErrorDescriptor
 from collections import defaultdict
 from types import NoneType
@@ -1681,7 +1682,7 @@ class SplitMongoModuleStore(SplitBulkWriteMixin, ModuleStoreWriteBase):
             if block_fields is not None:
                 root_block.fields.update(self._serialize_fields(root_category, block_fields))
             if definition_fields is not None:
-                old_def = self.get_definition(locator, root_block['definition'])
+                old_def = self.get_definition(locator, root_block.definition)
                 new_fields = old_def['fields']
                 new_fields.update(definition_fields)
                 definition_id = self._update_definition_from_data(locator, old_def, new_fields, user_id).definition_id

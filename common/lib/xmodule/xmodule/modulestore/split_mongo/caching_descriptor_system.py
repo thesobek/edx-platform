@@ -11,10 +11,11 @@ from xmodule.library_tools import LibraryToolsService
 from xmodule.mako_module import MakoDescriptorSystem
 from xmodule.error_module import ErrorDescriptor
 from xmodule.errortracker import exc_info_to_str
+from xmodule.modulestore import BlockData
 from xmodule.modulestore.edit_info import EditInfoRuntimeMixin
 from xmodule.modulestore.exceptions import ItemNotFoundError
 from xmodule.modulestore.inheritance import inheriting_field_data, InheritanceMixin
-from xmodule.modulestore.split_mongo import BlockKey, CourseEnvelope, BlockData
+from xmodule.modulestore.split_mongo import BlockKey, CourseEnvelope
 from xmodule.modulestore.split_mongo.id_manager import SplitMongoIdManager
 from xmodule.modulestore.split_mongo.definition_lazy_loader import DefinitionLazyLoader
 from xmodule.modulestore.split_mongo.split_mongo_kvs import SplitMongoKVS
@@ -171,7 +172,7 @@ class CachingDescriptorSystem(MakoDescriptorSystem, EditInfoRuntimeMixin):
 
         # If no usage id is provided, generate an in-memory id
         if block_key is None:
-            block_key = BlockKey(block_data['block_type'], LocalId())
+            block_key = BlockKey(block_data.block_type, LocalId())
 
         convert_fields = lambda field: self.modulestore.convert_references_to_keys(
             course_key, class_, field, self.course_entry.structure['blocks'],
