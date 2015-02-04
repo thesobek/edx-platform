@@ -267,7 +267,7 @@ class CountryAccessRule(models.Model):
     def _get_country_access_list(cls, course_id):
         allowed_countries = cache.get(cls.cache_key_for_consolidated_countries(course_id))
         if not allowed_countries:
-            all_countries = list(Country.objects.values_list('country', flat=True))
+            all_countries = [code[0] for code in list(countries)]
             black_countries = cls._get_country_access_rules_for_course(course_id, BLACK_LIST)
             white_countries = cls._get_country_access_rules_for_course(course_id, WHITE_LIST)
 
