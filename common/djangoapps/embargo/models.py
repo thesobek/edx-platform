@@ -18,6 +18,7 @@ from django.utils.translation import ugettext as _, ugettext_lazy
 from django.core.cache import cache
 
 from django_countries.fields import CountryField
+from django_countries import countries
 
 from config_models.models import ConfigurationModel
 from xmodule_django.models import CourseKeyField, NoneToEmptyManager
@@ -233,6 +234,11 @@ class CountryAccessRule(models.Model):
     )
 
     @classmethod
+    def cache_key_for_consolidated_countries(cls, course_id):
+        return "{}/allowed/countries".format(course_id)
+
+
+    @classmethod
     def check_country_access(cls, course_id, country):
         """
         Check if the country is either in whitelist or blacklist of countries for the course_id
@@ -247,41 +253,49 @@ class CountryAccessRule(models.Model):
             True if no country found for the given course and rule type
             otherwise check given country exists in list
         """
-        blocked = None
-        white_countries = cls._get_country_access_list(course_id, WHITE_LIST)
-        if white_countries:
-            if country in white_countries:
-                blocked = None
-            else:
-                blocked = True
-            return blocked
 
-        black_countries = cls._get_country_access_list(course_id, BLACK_LIST)
-        if black_countries:
-            if country in black_countries:
-                blocked = True
-            else:
-                blocked = None
-            return blocked
+        blocked = True
+        allowed_countries = cls._get_country_access_list(course_id)
+
+        if country in allowed_countries:
+            blocked = None
 
         return blocked
 
 
     @classmethod
-    def _get_country_access_list(cls, course_id, rule_type):
-        countries_list = cache.get(cls.cache_key_name(course_id, rule_type))
-        if countries_list is None:
-            countries_list = cls._get_country_access_rules_for_course(course_id, rule_type)
-            if countries_list:
-                cache.set(cls.cache_key_name(course_id, rule_type), countries_list)
-        return countries_list
+    def _get_country_access_list(cls, course_id):
+        allowed_countries = cache.get(cls.cache_key_for_consolidated_countries(course_id))
+        if not allowed_countries:
+            all_countries = list(Country.objects.values_list('country', flat=True))
+            black_countries = cls._get_country_access_rules_for_course(course_id, BLACK_LIST)
+            white_countries = cls._get_country_access_rules_for_course(course_id, WHITE_LIST)
+
+            if white_countries and black_countries:
+                allowed_countries = cls._get_country_access_rules_for_course(course_id, WHITE_LIST)
+            elif white_countries:
+                allowed_countries = cls._get_country_access_rules_for_course(course_id, WHITE_LIST)
+            elif black_countries:
+                allowed_countries = list(set(all_countries) - set(black_countries))
+
+            if allowed_countries:
+                cache.set(cls.cache_key_for_consolidated_countries(course_id), allowed_countries)
+            else:
+                cache.set(cls.cache_key_for_consolidated_countries(course_id), all_countries)
+        return allowed_countries
+
 
     @classmethod
     def _get_country_access_rules_for_course(cls, course_id, rule_type):
-        qry = CountryAccessRule.objects.filter(restricted_course__course_key=course_id, rule_type=rule_type)
-        qry = qry.values_list('country__country', flat=True)
-        course_embargoed_countries = list(qry)
+        course_embargoed_countries = cache.get(cls.cache_key_name(course_id, rule_type))
+        if not course_embargoed_countries:
+            qry = CountryAccessRule.objects.filter(restricted_course__course_key=course_id, rule_type=rule_type)
+            qry = qry.values_list('country__country', flat=True)
+            course_embargoed_countries = list(qry)
+            if len(course_embargoed_countries):
+                cache.set(cls.cache_key_name(course_id, rule_type), course_embargoed_countries)
         return course_embargoed_countries
+
 
     def __unicode__(self):
         if self.rule_type == WHITE_LIST:
@@ -312,11 +326,12 @@ class CountryAccessRule(models.Model):
         Clear the cached value when saving a RestrictedCourse entry
         """
         super(CountryAccessRule, self).save(*args, **kwargs)
-        cache.delete(self.cache_key_name(self.restricted_course.course_key,self.rule_type))
+        cache.delete(self.cache_key_name(self.restricted_course.course_key, self.rule_type))
 
     def delete(self, using=None):
         super(CountryAccessRule, self).delete()
-        cache.delete(self.cache_key_name(self.restricted_course.course_key,self.rule_type))
+        cache.delete(self.cache_key_name(self.restricted_course.course_key, self.rule_type))
+
 
 class IPFilter(ConfigurationModel):
     """
