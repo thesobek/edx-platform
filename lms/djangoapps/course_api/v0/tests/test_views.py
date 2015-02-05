@@ -4,14 +4,15 @@ Run these tests @ Devstack:
 """
 # pylint: disable=missing-docstring,invalid-name,maybe-no-member
 
+from datetime import datetime
+
 from django.core.urlresolvers import reverse
 from django.test.utils import override_settings
 from oauth2_provider.tests.factories import AccessTokenFactory, ClientFactory
+from opaque_keys.edx.locations import BlockUsageLocator
+from student.tests.factories import UserFactory
 from xmodule.modulestore.tests.django_utils import TEST_DATA_MOCK_MODULESTORE, ModuleStoreTestCase
 from xmodule.modulestore.tests.factories import CourseFactory, ItemFactory
-
-from datetime import datetime
-from student.tests.factories import UserFactory
 
 
 TEST_SERVER_HOST = 'http://testserver'
@@ -61,7 +62,8 @@ class TestCourseDataMixin(object):
         self.PROBLEM = ItemFactory.create(
             category="problem",
             parent_location=self.GRADED_CONTENT.location,
-            display_name="Problem 1"
+            display_name="Problem 1",
+            format="Homework"
         )
 
         self.EMPTY_COURSE = CourseFactory.create(
@@ -78,6 +80,7 @@ class CourseViewTestsMixin(AuthMixin, TestCourseDataMixin):
     view = None
 
     def setUp(self):
+        super(CourseViewTestsMixin, self).setUp()
         self.create_test_data()
         self.create_user_and_access_token()
 
@@ -234,35 +237,35 @@ class CourseStructureTests(CourseDetailMixin, CourseViewTestsMixin, ModuleStoreT
         The view should return the structure for a course.
         """
         response = super(CourseStructureTests, self).test_get()
+        blocks = {}
+
+        def add_block(xblock):
+            children = xblock.get_children()
+            blocks[unicode(xblock.location)] = {
+                u'id': unicode(xblock.location),
+                u'type': xblock.category,
+                u'display_name': xblock.display_name,
+                u'format': xblock.format,
+                u'graded': xblock.graded,
+                u'children': [unicode(child.location) for child in children]
+            }
+
+            for child in children:
+                add_block(child)
+
+        course = self.store.get_course(self.COURSE.id, depth=None)
+
+        # Include the orphaned about block
+        about_block = self.store.get_item(BlockUsageLocator(self.COURSE.id, 'about', 'overview'))
+
+        add_block(course)
+        add_block(about_block)
+
         expected = {
             u'root': unicode(self.COURSE.location),
-            u'blocks': {
-                unicode(self.COURSE.location): {
-                    u'id': unicode(self.COURSE.location),
-                    u'type': u'course',
-                    u'display_name': self.COURSE_NAME,
-                    u'format': None,
-                    u'graded': False,
-                    u'children': [unicode(self.GRADED_CONTENT.location)]
-                },
-                unicode(self.GRADED_CONTENT.location): {
-                    u'id': unicode(self.GRADED_CONTENT.location),
-                    u'type': self.GRADED_CONTENT.category,
-                    u'display_name': self.GRADED_CONTENT.display_name,
-                    u'format': self.GRADED_CONTENT.format,
-                    u'graded': self.GRADED_CONTENT.graded,
-                    u'children': [unicode(self.PROBLEM.location)]
-                },
-                unicode(self.PROBLEM.location): {
-                    u'id': unicode(self.PROBLEM.location),
-                    u'type': self.PROBLEM.category,
-                    u'display_name': self.PROBLEM.display_name,
-                    u'format': self.PROBLEM.format,
-                    u'graded': self.PROBLEM.graded,
-                    u'children': []
-                },
-            }
+            u'blocks': blocks
         }
+
         self.assertDictEqual(response.data, expected)
 
 

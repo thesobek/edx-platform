@@ -59,6 +59,8 @@ class CourseStructureSerializer(serializers.Serializer):
         serialized = {}
 
         for key, block in structure.blocks.iteritems():
+            # Ensure graded is always a boolean value
+            block.graded = block.graded or False
             serialized[key] = block.__dict__
 
         return serialized
